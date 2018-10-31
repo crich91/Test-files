@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord.ext.commands import Bot
 import asyncio
 import time
+import os
 
 Client = discord.Client()
 client = commands.Bot(command_prefix= "!")
@@ -22,4 +23,6 @@ async def HelloWorld(ctx):
     Auth = ctx.message.author
     await client.send_message(Auth, 'You Rang?')
 
-client.run("NTA2NjQ2ODM0MTU3MTkxMjE4.DroDnA.xFwrjkdl9bGBDu1JAhGQOn-IpWw")
+#client.run("NTA2NjQ2ODM0MTU3MTkxMjE4.DroDnA.xFwrjkdl9bGBDu1JAhGQOn-IpWw")
+
+client.run("{}".format(os.environ.get('CHAT')))
