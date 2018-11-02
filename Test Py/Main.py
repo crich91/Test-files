@@ -15,12 +15,6 @@ async def on_ready():
     print('Bot is ready')
 
 
-@client.command(pass_context=True, aliases=['simonsays', 'simon says'])
-async def SimonSays(ctx):
-    phrase = ctx.message.content
-    printsentence= phrase.partition(' ')[2]
-    await client.say(printsentence)
-
 if __name__ == '__main__':
     for extention in extentions:
         try:
