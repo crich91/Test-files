@@ -6,23 +6,28 @@ import time
 import os
 
 Client = discord.Client()
-client = commands.Bot(command_prefix= "!")
+client = commands.Bot(command_prefix = ".")
+
+extentions = ['Test_COGS']
 
 @client.event
 async def on_ready():
     print('Bot is ready')
 
-@client.event
-async def on_message(message):
-    Auth = message.author
-    if message.content == "Hello":
-        await client.send_message(Auth, "Hey There!")
 
-@client.command(pass_context=True)
-async def HelloWorld(ctx):
-    Auth = ctx.message.author
-    await client.send_message(Auth, 'You Rang?')
+@client.command(pass_context=True, aliases=['simonsays', 'simon says'])
+async def SimonSays(ctx):
+    phrase = ctx.message.content
+    #word_list = phrase.split(' ')
+    #word_list.pop(0)
+    printsentence= phrase.partition(' ')[2]
+    await client.say(printsentence)
 
-#client.run("NTA2NjQ2ODM0MTU3MTkxMjE4.DroDnA.xFwrjkdl9bGBDu1JAhGQOn-IpWw")
+if __name__ == '__main__':
+    for extention in extentions:
+        try:
+            client.load_extension(extention)
+        except Exception as error:
+            print('{} cannont be loaded. {}'.format(extention, error))
 
-client.run("{}".format(os.environ.get('CHAT')))
+    client.run("{}".format(os.environ.get('CHAT')))

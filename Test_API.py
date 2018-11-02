@@ -23,7 +23,7 @@ print(response)
 print("Error Status: {}".format(response.json()['ErrorStatus']))
 
 
-
+'''
 avatar_list = []
 for avatar in response.json()['Response']:
     avatar_list.append(avatar)
@@ -37,19 +37,14 @@ for i in list_of_Images:
     response = requests.get(url=imgURL, headers=headers)
     img = Image.open(BytesIO(response.content))
     #img.show()
-
-
-
-
-
-
 '''
+
 for saleItem in response_json['Response']['Data']['saleItemCategories']:
     thesaleitems = saleItem[saleItems]
     for item in thesaleitems:
         hashid = str(item['item']['itemHash'])
         print(hashid)
-'''
+
 
 #print(r)
 #print(r['ErrorStatus'])
