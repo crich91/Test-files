@@ -52,9 +52,11 @@ class Destiny2:
         session = requests.Session()
 
         await self.client.say("Pulling: {}".format(url))
-        request = requests.get(url=url, headers=headers)
+        response = requests.get(url=url, headers=headers)
 
-        print(request.json())
+        print("Error Status: {}".format(response.json()['ErrorStatus']))
+
+        print(response.json())
 
 
 '''
