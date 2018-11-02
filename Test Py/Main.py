@@ -8,7 +8,7 @@ import os
 Client = discord.Client()
 client = commands.Bot(command_prefix = ".")
 
-extentions = ['Test_COGS']
+extentions = ['Test_COGS', 'Destiny_COGS']
 
 @client.event
 async def on_ready():
@@ -18,8 +18,6 @@ async def on_ready():
 @client.command(pass_context=True, aliases=['simonsays', 'simon says'])
 async def SimonSays(ctx):
     phrase = ctx.message.content
-    #word_list = phrase.split(' ')
-    #word_list.pop(0)
     printsentence= phrase.partition(' ')[2]
     await client.say(printsentence)
 
