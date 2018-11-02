@@ -44,15 +44,17 @@ class Destiny2:
         await self.client.say("Starting Look Up")
         gamertagraw = str(ctx.message.content)
         gamertag = gamertagraw.partition(' ')[2]
-
         await self.client.say("Gamer Tag: {}".format(gamertag))
-        url = "https://bungie.net/Platform/User/SearchUers/?q=" + gamertag.strip()
+
+        url = "https://bungie.net/Platform/Destiny2/User/SearchDestinyPlayer/2/" + gamertag.strip()
         API_KEY =  os.environ.get('D2')
         headers = {'X-API-Key': API_KEY}
-        #session = requests.Session()
+        session = requests.Session()
 
         await self.client.say("Pulling: {}".format(url))
-        #request = requests.get(url, headers=headers)
+        request = requests.get(url=url, headers=headers)
+
+        print(request.json())
 
 
 '''
