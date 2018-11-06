@@ -46,17 +46,41 @@ class Destiny2:
         gamertag = gamertagraw.partition(' ')[2]
         await self.client.say("Gamer Tag: {}".format(gamertag))
 
-        url = "https://bungie.net/Platform/Destiny2/User/SearchDestinyPlayer/2/" + gamertag.strip()
+        url = "https://bungie.net/Platform/Destiny2/SearchDestinyPlayer/2/{}".format(gamertag)
+
         API_KEY =  os.environ.get('D2')
         headers = {'X-API-Key': API_KEY}
         session = requests.Session()
 
         await self.client.say("Pulling: {}".format(url))
-        response = requests.get(url=url, headers=headers)
+        response = requests.get(url, headers=headers)
 
-        print("Error Status: {}".format(response.json()['ErrorStatus']))
 
-        print(response.json())
+        await self.client.say("Error Status: {}".format(response.json()['ErrorStatus']))
+
+        info = response.json()['Response']
+        if info:
+            for i in info:
+                    await self.client.say("{}'s Membership ID is: {}".format(gamertag, i['membershipId']))
+                    memberidraw = i['membershipId']
+                    memberid = memberidraw
+                    staturl = "https://bungie.net/Platform/Destiny2/2/Account/{}/Character/0/Stats".format(memberid)
+                    await self.client.say("Pulling: {}".format(staturl))
+
+                    statresponse = requests.get(staturl, headers=headers)
+                    await self.client.say("Error Status: {}".format(statresponse.json()['ErrorStatus']))
+                    stats = statresponse.json()['Response']
+                    print(stats)
+
+
+
+
+                    #await self.client.say(stats)
+        else:
+            await self.client.say("User Not Found.")
+
+
+
 
 
 '''
