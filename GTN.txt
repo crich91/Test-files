@@ -1,0 +1,551 @@
+﻿///$tab Paths
+SET ThousandSep=',';
+SET DecimalSep='.';
+SET MoneyThousandSep=',';
+SET MoneyDecimalSep='.';
+SET MoneyFormat='$#,##0.00;($#,##0.00)';
+SET TimeFormat='h:mm:ss TT';
+SET DateFormat='M/D/YYYY';
+SET TimestampFormat='M/D/YYYY h:mm:ss[.fff] TT';
+SET FirstWeekDay=6;
+SET BrokenWeeks=1;
+SET ReferenceDay=0;
+SET FirstMonthOfYear=1;
+SET CollationLocale='en-US';
+SET MonthNames='Jan;Feb;Mar;Apr;May;Jun;Jul;Aug;Sep;Oct;Nov;Dec';
+SET LongMonthNames='January;February;March;April;May;June;July;August;September;October;November;December';
+SET DayNames='Mon;Tue;Wed;Thu;Fri;Sat;Sun';
+SET LongDayNames='Monday;Tuesday;Wednesday;Thursday;Friday;Saturday;Sunday';
+
+
+// Paths and Connection Strings
+$(must_include=\\aws-qanalytics\Data\Includes Files\Paths.qvs)
+
+
+
+set QVDLocation = '\\aws-qanalytics\Data\QVD';
+
+
+
+
+// Show/Hide Export Tab User List
+Set ExportShow = =if(
+lower(osuser())='westbury\bobl' or
+lower(osuser())='westbury\christopher.rich' or
+lower(osuser())='westbury\connie.fu' or
+lower(osuser())='westbury\keith.stokes' or
+lower(osuser())='westbury\kevin.bowles' or
+lower(osuser())='westbury\cliffords' , 1, 0);
+
+
+///$tab Report Selections and Mappings
+Months:
+NoConcatenate
+LOAD * Inline [
+	"Selected Month", "Month Short Name"
+	1, Jan
+	2, Feb
+	3, Mar
+	4, Apr
+	5, May
+	6, Jun
+	7, Jul
+	8, Aug
+	9, Sep
+	10, Oct
+	11, Nov
+	12, Dec
+];
+
+Quarters:
+NoConcatenate
+LOAD * Inline [
+	"Selected Quarter"
+	1
+	2
+	3
+	4
+];
+
+
+ LET varMaxDate = year(today());
+ LET varMinDate = '2017'; // Start of BW Reporting
+ 
+
+Calendar:
+ LOAD
+ $(varMinDate)+Iterno()-1 AS Num,
+ ($(varMinDate)+Iterno()-1) AS [Selected Year]
+ AUTOGENERATE 1 WHILE $(varMinDate)+Iterno()-1<= $(varMaxDate);
+
+
+TimeDimensions:
+NoConcatenate
+LOAD * Inline [
+	TD_ID, TD_Text, CY_Short_Text, LY_Short_Text
+	1, Full Year, FYR, LYFYR
+	2, Year to Date, YTD, LYYTD
+	3, Quarter to Date, QTD, LYQTD
+	4, Month to Date, MTD, LYMTD
+];
+
+Units:
+NoConcatenate
+LOAD * Inline [
+	Name, Divisor
+	Units, 1
+	Thousands, 1000
+];
+
+
+Report_Sel:
+LOAD * INLINE [
+    Report_Sel
+   MANAGEMENT REPORT
+    ALL BUDGETED
+];
+
+
+LOAD * INLINE [
+    Company Code, CompanyCodeDisplayAsia
+    C200,Wal-Mart China
+    C203,Hong Kong
+];
+
+
+
+BrandStudySort:
+LOAD * INLINE [
+G/L Acc.-ZLTB Hier.-L09 (LG) Text , SortPosition
+Deductions,2
+Gross Revenue,1
+Non-Standard COGS,4
+Standard COGS,3
+
+];
+
+
+
+
+// Mapping to beakout/combine Divisions 
+DivisionMappingTable:
+Mapping Load * Inline [
+				Profit Center2, Division2
+				US-METALS, Metals
+				US-PR, Metals
+				40593, Metals
+				40050, Mikasa
+				40080, Fitz & Floyd
+				25100, 25100
+			  ];
+
+
+
+
+
+
+
+
+///$tab Main
+//Use this variable to use the mapping table for division mapping. 1 = on 0 = off
+Set UseDivisionMappingTable = 1;
+
+Set ColumnSwitch = 0;
+Set vShowFilter = 0;
+Set CurrentQuarter			= =Max([Selected Quarter]);
+Set CurrentYear 			= =Max([Selected Year]);
+Set LastYear 				= =Max([Selected Year])-1;
+Set CurrentMonth 			= =Max([Selected Month]);
+Set TimeDimension			= =Max([TD_ID]);
+Set CurrentCurrency			= =MaxString([Selected Currency]);
+
+FlexPlanVersions:
+load 
+	MaxString([Selected Flex Plan Version]) as [Selected Flex Plan Version] 
+from [$(QVDLocation)\FlexPlanVersions.qvd] (qvd);
+
+Let MaxFlexPlanVersion		= Peek('Selected Flex Plan Version', 0, 'FlexPlanVersions');
+
+Let CurrentYear_Sum = '
+	if($1=1, sum( {$<[Fiscal Year] = {$'&'(CurrentYear)} >} $2 ),)';
+
+Let PreviousYear_Sum = '
+	if($1=1, sum( {$<[Fiscal Year] = {$'&'(LastYear)} >}  $2 ),)';
+
+
+//All Company Codes
+Let AllCompCodesCY_Sum = '
+	if($1=1, sum( {$<[Fiscal Year] = {$'&'(CurrentYear)}  >} $2 ),
+	if($1=2, sum( {$<[Fiscal Year] = {$'&'(CurrentYear)}, [Fiscal Period] = {"<=$'&'(CurrentMonth)"} >} $2 ),
+	if($1=3, sum( {$<[Fiscal Year] = {$'&'(CurrentYear)}, [Fiscal Quarter] = {$'&'(CurrentQuarter)}, [Fiscal Period] = {"<=$'&'(CurrentMonth)"} >} $2 ),
+	if($1=4, sum( {$<[Fiscal Year] = {$'&'(CurrentYear)}, [Fiscal Period] = {$'&'(CurrentMonth)} >} $2 ),
+))))';
+
+Let AllCompCodesPY_Sum = '
+	if($1=1, sum( {$<[Fiscal Year] = {$'&'(LastYear)} >}  $2 ),
+	if($1=2, sum( {$<[Fiscal Year] = {$'&'(LastYear)}, [Fiscal Period] = {"<=$'&'(CurrentMonth)"} >} $2 ),
+	if($1=3, sum( {$<[Fiscal Year] = {$'&'(LastYear)}, [Fiscal Quarter] = {$'&'(CurrentQuarter)},  [Fiscal Period] = {"<=$'&'(CurrentMonth)"} >} $2 ),
+	if($1=4, sum( {$<[Fiscal Year] = {$'&'(LastYear)}, [Fiscal Period] = {$'&'(CurrentMonth)} >} $2 ),
+))))';
+
+
+
+//*************************************************     For Export Tab     *********************************************************
+Let CY_Sum = '
+	if($1=1, sum( {$<[Fiscal Year] = {$'&'(CurrentYear)}, [Company Code]= {"$2"}  >} $3 ),
+	if($1=2, sum( {$<[Fiscal Year] = {$'&'(CurrentYear)}, [Fiscal Period] = {"<=$'&'(CurrentMonth)"}, [Company Code]= {"$2"} >} $3 ),
+	if($1=3, sum( {$<[Fiscal Year] = {$'&'(CurrentYear)}, [Fiscal Quarter] = {$'&'(CurrentQuarter)}, [Fiscal Period] = {"<=$'&'(CurrentMonth)"}, [Company Code]= {"$2"} >} $3 ),
+	if($1=4, sum( {$<[Fiscal Year] = {$'&'(CurrentYear)}, [Fiscal Period] = {$'&'(CurrentMonth)}, [Company Code]= {"$2"} >} $3 ),
+))))';
+
+Let PY_Sum = '
+	if($1=1, sum( {$<[Fiscal Year] = {$'&'(LastYear)}, [Company Code]= {"$2"} >}  $3 ),
+	if($1=2, sum( {$<[Fiscal Year] = {$'&'(LastYear)}, [Fiscal Period] = {"<=$'&'(CurrentMonth)"}, [Company Code]= {"$2"} >} $3 ),
+	if($1=3, sum( {$<[Fiscal Year] = {$'&'(LastYear)}, [Fiscal Quarter] = {$'&'(CurrentQuarter)}, [Fiscal Period] = {"<=$'&'(CurrentMonth)"}, [Company Code]= {"$2"} >} $3 ),
+	if($1=4, sum( {$<[Fiscal Year] = {$'&'(LastYear)}, [Fiscal Period] = {$'&'(CurrentMonth)}, [Company Code]= {"$2"} >} $3 ),
+))))';
+
+//Walmart China/Hong Kong C200 C203
+Let WMCHCY_Sum = '
+	if($1=1, sum( {$<[Fiscal Year] = {$'&'(CurrentYear)}, [Company Code]= {C200,C203}  >} $2 ),
+	if($1=2, sum( {$<[Fiscal Year] = {$'&'(CurrentYear)}, [Fiscal Period] = {"<=$'&'(CurrentMonth)"}, [Company Code]= {C200,C203} >} $2 ),
+	if($1=3, sum( {$<[Fiscal Year] = {$'&'(CurrentYear)}, [Fiscal Quarter] = {$'&'(CurrentQuarter)}, [Fiscal Period] = {"<=$'&'(CurrentMonth)"}, [Company Code]= {C200,C203} >} $2 ),
+	if($1=4, sum( {$<[Fiscal Year] = {$'&'(CurrentYear)}, [Fiscal Period] = {$'&'(CurrentMonth)}, [Company Code]= {C200,C203} >} $2 ),
+))))';
+
+Let WMCHPY_Sum = '
+	if($1=1, sum( {$<[Fiscal Year] = {$'&'(LastYear)}, [Company Code]= {C200,C203} >}  $2 ),
+	if($1=2, sum( {$<[Fiscal Year] = {$'&'(LastYear)}, [Fiscal Period] = {"<=$'&'(CurrentMonth)"}, [Company Code]= {C200,C203} >} $2 ),
+	if($1=3, sum( {$<[Fiscal Year] = {$'&'(LastYear)}, [Fiscal Quarter] = {$'&'(CurrentQuarter)},  [Fiscal Period] = {"<=$'&'(CurrentMonth)"},[Company Code]= {C200,C203} >} $2 ),
+	if($1=4, sum( {$<[Fiscal Year] = {$'&'(LastYear)}, [Fiscal Period] = {$'&'(CurrentMonth)}, [Company Code]= {C200,C203} >} $2 ),
+))))';
+
+//	Walmart China / Hong Kong C200 C203 SYUS
+Let AllCY_Sum = '
+	if($1=1, sum( {$<[Fiscal Year] = {$'&'(CurrentYear)}, [Company Code]= {C200,C203,SYUS}  >} $2 ),
+	if($1=2, sum( {$<[Fiscal Year] = {$'&'(CurrentYear)}, [Fiscal Period] = {"<=$'&'(CurrentMonth)"}, [Company Code]= {C200,C203, SYUS} >} $2 ),
+	if($1=3, sum( {$<[Fiscal Year] = {$'&'(CurrentYear)}, [Fiscal Quarter] = {$'&'(CurrentQuarter)}, [Fiscal Period] = {"<=$'&'(CurrentMonth)"}, [Company Code]= {C200,C203, SYUS} >} $2 ),
+	if($1=4, sum( {$<[Fiscal Year] = {$'&'(CurrentYear)}, [Fiscal Period] = {$'&'(CurrentMonth)}, [Company Code]= {C200,C203,SYUS} >} $2 ),
+))))';
+
+Let AllPY_Sum = '
+	if($1=1, sum( {$<[Fiscal Year] = {$'&'(LastYear)}, [Company Code]= {C200,C203,SYUS} >}  $2 ),
+	if($1=2, sum( {$<[Fiscal Year] = {$'&'(LastYear)}, [Fiscal Period] = {"<=$'&'(CurrentMonth)"}, [Company Code]= {C200,C203,SYUS} >} $2 ),
+	if($1=3, sum( {$<[Fiscal Year] = {$'&'(LastYear)}, [Fiscal Quarter] = {$'&'(CurrentQuarter)},  [Fiscal Period] = {"<=$'&'(CurrentMonth)"},[Company Code]= {C200,C203,SYUS} >} $2 ),
+	if($1=4, sum( {$<[Fiscal Year] = {$'&'(LastYear)}, [Fiscal Period] = {$'&'(CurrentMonth)}, [Company Code]= {C200,C203,SYUS} >} $2 ),
+))))';
+//*********************************************************************************************************************************************
+
+
+
+//left join (GLPCA)
+Flex:
+Load
+	//[Company Code] & '-' & [Account Group Family] & '-' & if(isnum(PurgeChar([Profit Center] , '0' )),mid([Profit Center],index([Profit Center],left(PurgeChar([Profit Center] , '0' ),1))),text([Profit Center])) & '-' &[Fiscal Year] & '-' &[Fiscal Period] as FlexLink,
+	[Company Code] & '-' & [Account Group Family] & '-' & if(isnum(PurgeChar([Profit Center] , '0' )),mid([Profit Center],index([Profit Center],left(PurgeChar([Profit Center] , '0' ),1))),text([Profit Center])) as SalesPersonLink,
+	//[Profit Center],
+	//[Account Group Family] as [Sales Account Group], 
+	//[Company Code],
+	[Flex Plan Calculated - Document Currency] as FlexSummed
+	//[Flex Plan Version],
+	//[Fiscal Year], 
+	//[Fiscal Period]
+From [$(QVDLocation)\SDBVCG098.qvd](qvd)
+where [Flex Plan Version] = '000000' OR [Flex Plan Version] = $(MaxFlexPlanVersion)
+AND [Fiscal Year]= Year(today());
+
+//NoConcatenate
+//Flex2:
+//load * 
+//Resident Flex;
+//
+//drop Table Flex;
+//rename table Flex2 to Flex;
+
+GLPCA:
+Load 
+
+	[Company Code],
+	[Company Code Text],
+	[Cost Center],
+	[Cost Center Text],
+	num([Fiscal Period]) as [Fiscal Period Num],
+	[Fiscal Year],
+	[Fiscal Quarter],
+	[Posting Date],
+	[Plant],
+	[Plant Text],
+	[Sales Organization],
+	[Sales Organization Text],
+	[Distribution Channel],
+	[Distribution Channel Text],
+	[Division],
+	[Division Text],
+	[Controlling Area],
+	[Controlling Area Text],
+
+	[Sold-To],
+	[Sold-To Text],
+	[Sold-To-Industry (LG)] as ChannelKey,
+	[Sold-To-Industry (LG) Text] as Channel,
+	[Account Group Family (LG)],
+	[Account Group Family (LG) Text],
+	[Account Group Family Rank (LG)],
+	[Reference Document Number],
+	[Material] ,
+	[Material Text],
+	[Material-Brand Text (LG)],
+	[Material-Category Text (LG)],
+	[Material-Sub-Category Text (LG)],
+
+	[Profit Center],
+	[Profit Center Text],
+	[Prft.Ctr.-CNHKTRADE Hier.-Parent (LG)],
+	[Prft.Ctr.-CNHKTRADE Hier.-Parent (LG) Text],
+	[Prft.Ctr.-CNHKTRADE Hier.-Parent Lvl. (LG)],
+	[Prft.Ctr.-CNHKTRADE Hier.-L01 (LG)],
+	[Prft.Ctr.-CNHKTRADE Hier.-L01 (LG) Text],
+	[Prft.Ctr.-CNHKTRADE Hier.-L02 (LG) Text],
+	[Prft.Ctr.-CNHKTRADE Hier.-L03 (LG) Text],
+	[Prft.Ctr.-CNHKTRADE Hier.-L04 (LG) Text],
+	[Prft.Ctr.-CNHKTRADE Hier.-L05 (LG) Text],
+	[Prft.Ctr.-CNHKTRADE Hier.-L06 (LG) Text],
+	[Prft.Ctr.-CNHKTRADE Hier.-L07 (LG) Text],
+	[Prft.Ctr.-CNHKTRADE Hier.-L08 (LG) Text],
+	[Prft.Ctr.-CNHKTRADE Hier.-L09 (LG) Text],
+	[Prft.Ctr.-CNHKTRADE Hier.-L10 (LG) Text],
+	
+	[Prft.Ctr.-USWHSALE Hier.-Parent (LG) Text],
+	[Prft.Ctr.-USWHSALE Hier.-Parent Lvl. (LG)],
+	[Prft.Ctr.-USWHSALE Hier.-L01 (LG) Text],
+	[Prft.Ctr.-USWHSALE Hier.-L02 (LG) Text],
+	[Prft.Ctr.-USWHSALE Hier.-L03 (LG) Text],
+	[Prft.Ctr.-USWHSALE Hier.-L04 (LG) Text],
+	[Prft.Ctr.-USWHSALE Hier.-L05 (LG) Text],
+	[Prft.Ctr.-USWHSALE Hier.-L06 (LG) Text],
+	[Prft.Ctr.-USWHSALE Hier.-L07 (LG) Text],
+	[Prft.Ctr.-USWHSALE Hier.-L08 (LG) Text],
+	[Prft.Ctr.-USWHSALE Hier.-L09 (LG) Text],
+	[Prft.Ctr.-USWHSALE Hier.-L10 (LG) Text],
+	
+	[G/L Account],
+	[G/L Account Text],
+	[G/L Account-Account Group (LG)],
+	[G/L Account-Account Group (LG) Text],
+	[G/L Account-ZLTB Hierarchy-Parent (LG)],
+	[G/L Account-ZLTB Hierarchy-Parent (LG) Text],
+	[G/L Acc.-ZLTB Hier.-Parent Lvl. (LG)],
+	[G/L Acc.-ZLTB Hier.-L01 (LG) Text],
+	[G/L Acc.-ZLTB Hier.-L02 (LG) Text],
+	[G/L Acc.-ZLTB Hier.-L03 (LG) Text],
+	[G/L Acc.-ZLTB Hier.-L04 (LG) Text],
+	[G/L Acc.-ZLTB Hier.-L05 (LG) Text],
+	[G/L Acc.-ZLTB Hier.-L06 (LG) Text],
+	[G/L Acc.-ZLTB Hier.-L07 (LG) Text],
+	[G/L Acc.-ZLTB Hier.-L08 (LG) Text],
+	[G/L Acc.-ZLTB Hier.-L09 (LG)],
+	[G/L Acc.-ZLTB Hier.-L09 (LG) Text],
+	[G/L Acc.-ZLTB Hier.-L10 (LG) Text],
+	[G/L Acc.-ZLTB Hier.-L11 (LG) Text],
+	
+	//[Sold-To-Account Group Family (LG)],
+	//[Sold-To-Account Group Family (LG) Text],
+	//[Document Currency],
+	//[Document Currency Text],
+	//[Total Amount - LC],
+	//[Debit Amount - LC],
+	//[Credit Amount - LC],
+	//[Budget Amount-LC],
+	//[Local Currency],
+	//[Local Currency Text],
+	
+	[Total Amount - GC],
+	//[Debit Amount - GC],
+	//[Credit Amount - GC],
+	[COGS  Base  GC],
+	[COGS - Standard Base  GC],
+	[COGS-NS-SHR Labor Base  GC],
+	[COGS-NS-Min. Royalty Base  GC],
+	[COGS-NS-Change In Reserves  Base  GC],
+	[COGS-NS-Overhead - Over (Under) Absorbed  Base  GC],
+	[COGS-NS-Var. To Std. Base  GC],
+	[COGS-NS-Misc. COS Puerto Rico  Base  GC],
+	[COGS-NS-All Other  Base  GC],
+	[Budget Amount-GC],
+	[Gross Sales  Budget  GC],
+	[COGS  Budget  GC],
+	[COGS - Standard Budget  GC],
+	[COGS-NS-SHR Labor Budget  GC],
+	[COGS-NS-Min. Royalty Budget  GC],
+	[COGS-NS-Change In Reserves  Budget  GC],
+	[COGS-NS-Overhead - Over (Under) Absorbed  Budget  GC],
+	[COGS-NS-Var. To Std. Budget  GC],
+	[COGS-NS-Misc. COS Puerto Rico  Budget  GC],
+	[COGS-NS-All Other  Budget  GC],
+	[Sales Account Group],
+	[Forecast Allowances - Group Currency],
+	[Forecast Gross Sales - Group Currency],
+	[Forecast COGS-GC],
+	//[Flex Plan - GC],
+	//[Flex Plan Version],
+	[Group Currency],
+	[Group Currency Text],
+
+
+// Set Rankings
+
+// if UseDivisionMappingTable variable is set to 1 then the DivisionRankKey field will be using mappings from the inline load DivisionMappingTable 	
+//-------------------------------------------------------------------------------------------------------------------------------------------------\\	
+if($(UseDivisionMappingTable) = 1, 
+	upper(IF([Company Code] = 'C200' or [Company Code] = 'C203',
+		IF([Prft.Ctr.-CNHKTRADE Hier.-Parent (LG)] = 'SYCAUNALLCTT', '25100',
+			[Prft.Ctr.-USWHSALE Hier.-Parent (LG)]),
+		IF([Profit Center]= '25100', '25100', 
+			ApplyMap('DivisionMappingTable',[Prft.Ctr.-USWHSALE Hier.-Parent (LG)])))) & '_' & [Account Group Family (LG)],
+	
+	upper(IF([Company Code] = 'C200' or [Company Code] = 'C203',
+		IF([Prft.Ctr.-CNHKTRADE Hier.-Parent (LG)] = 'SYCAUNALLCTT', '25100',
+			[Prft.Ctr.-USWHSALE Hier.-Parent (LG)]),
+		IF([Profit Center]= '25100', '25100', 
+			[Prft.Ctr.-USWHSALE Hier.-Parent (LG)]))) & '_' & [Account Group Family (LG)] )as DivisionRankKey,
+//-------------------------------------------------------------------------------------------------------------------------------------------------\\			
+	
+			
+	upper(IF([Company Code] = 'C200' or [Company Code] = 'C203',
+		IF([Prft.Ctr.-CNHKTRADE Hier.-Parent (LG)] = 'SYCAUNALLCTT', '25100',
+			[Prft.Ctr.-USWHSALE Hier.-L03 (LG)]),
+		IF([Profit Center]= '25100', '25100', 
+			[Prft.Ctr.-USWHSALE Hier.-L03 (LG)]))) & '_' & [Account Group Family (LG)] as Divisionlvl3RankKey,
+	
+	IF([Company Code] = 'C200' or [Company Code] = 'C203',
+		IF([Prft.Ctr.-CNHKTRADE Hier.-Parent (LG)] = 'SYCAUNALLCTT', '25100',
+			[Profit Center]),[Profit Center])   & '_' & [Account Group Family (LG)] as ProfitCenterRankKey ,
+
+
+
+
+//  Map Division and Profit Centers
+
+// if UseDivisionMappingTable variable is set to 1 then the DivisionMapped field will be using mappings from the inline load DivisionMappingTable 	
+//-------------------------------------------------------------------------------------------------------------------------------------------------\\
+if($(UseDivisionMappingTable) = 1, 
+	IF([Company Code] = 'C200' or [Company Code] = 'C203',
+		IF([Prft.Ctr.-CNHKTRADE Hier.-Parent (LG)] = 'SYCAUNALLCTT', '25100',
+			[Prft.Ctr.-USWHSALE Hier.-Parent (LG) Text]), 
+			ApplyMap('DivisionMappingTable',[Profit Center],[Prft.Ctr.-USWHSALE Hier.-Parent (LG) Text])) ,
+
+	IF( [Company Code] = 'C200' or [Company Code] = 'C203',
+		IF([Prft.Ctr.-CNHKTRADE Hier.-Parent (LG)] = 'SYCAUNALLCTT', '25100',
+			[Prft.Ctr.-USWHSALE Hier.-Parent (LG) Text]),
+		IF([Profit Center]= '25100', '25100', 
+			[Prft.Ctr.-USWHSALE Hier.-Parent (LG) Text])))   as DivisionMappped,
+//-------------------------------------------------------------------------------------------------------------------------------------------------\\	
+		
+	IF([Company Code] = 'C200' or [Company Code] = 'C203',
+		IF([Prft.Ctr.-CNHKTRADE Hier.-Parent (LG)] = 'SYCAUNALLCTT', '25100',
+			[Prft.Ctr.-USWHSALE Hier.-L03 (LG) Text]),
+		IF([Profit Center]= '25100', '25100', 
+			[Prft.Ctr.-USWHSALE Hier.-L03 (LG) Text]))      as DivisionLVL3Mapped,
+			
+	IF([Company Code] = 'C200' or [Company Code] = 'C203',
+		IF([Prft.Ctr.-CNHKTRADE Hier.-Parent (LG)] = 'SYCAUNALLCTT', '25100',
+			[Profit Center]), [Profit Center])              as ProfitCenterMapped,
+			
+	IF([Company Code] = 'C200' or [Company Code] = 'C203',
+		IF([Prft.Ctr.-CNHKTRADE Hier.-Parent (LG)] = 'SYCAUNALLCTT', '25100',
+			[Profit Center Text]), [Profit Center Text])    as [ProfitCenterMapped Text],
+	
+//Convert Measures to positive numbers
+	[Gross Sales  Base  GC]*-1 as [Gross Sales  Base  GC Converted],
+	[Sales Allowances Base  GC]*-1 as [Sales Allowances Base  GC Converted],
+	[Sales Allowances Budget  GC]*-1 as [Sales Allowances Budget  GC Converted],
+	[COGS - Non-Standard  Base  GC]*-1 as [COGS - Non-Standard  Base  GC Converted],
+	[COGS - Non-Standard  Budget  GC]*-1 as [COGS - Non-Standard  Budget  GC Converted]
+	
+	
+From [$(QVDLocation)\Z_PCAVCG099_Q001_GTN_DETAILS.qvd] (qvd)
+	Where upper([G/L Acc.-Inter-Co. Rev. Acc. Flag (LG) Text]) = 'NO' OR isnull([G/L Acc.-Inter-Co. Rev. Acc. Flag (LG) Text]) //filter out Intercompany Accounts\\
+//	AND [Flex Plan Version] <> '000000' AND [Flex Plan Version] = $(MaxFlexPlanVersion)
+;
+
+
+Rename Field [Fiscal Period Num] to [Fiscal Period],
+			 [Gross Sales  Base  GC Converted] to [Gross Sales  Base  GC],
+			 [Sales Allowances Base  GC Converted] to [Sales Allowances Base  GC],
+			 [Sales Allowances Budget  GC Converted] to [Sales Allowances Budget  GC],
+			 [COGS - Non-Standard  Base  GC Converted] to [COGS - Non-Standard  Base  GC],
+			 [COGS - Non-Standard  Budget  GC Converted] to [COGS - Non-Standard  Budget  GC]; 
+
+
+
+
+
+
+//*******************************************Join In Customer Rankings*******************************************\\
+left join (GLPCA)
+	Load 
+		[USWHSALE Hierarchy - Parent] & '_' & [Account Group Family (LG)] as DivisionRankKey , 
+		[Profit Center Division Ranking]	
+	From [$(QVDLocation)\PCMAAG020.qvd](QVD);
+
+Left join (GLPCA)
+	Load 
+		[Profit Center]& '_' & [Account Group Family (LG)] as ProfitCenterRankKey , 
+		[Profit Center Sub-Division Ranking]
+	From [$(QVDLocation)\PCMAAG021.qvd] (QVD);
+
+Left join (GLPCA)
+	Load 
+		[USWHSALE Hierarchy - Level 03]& '_' & [Account Group Family (LG)] as Divisionlvl3RankKey , 
+		[Profit Center Level 3 Ranking]
+	From [$(QVDLocation)\PCMAAG023.qvd] (QVD);
+
+//*******************************************Create Account Groups for Diffrent Levels*******************************************\\
+NoConcatenate
+GLPCA_Map_All_Other:
+Load *,
+
+	 
+	[Company Code] & '_' & [Sold-To] & '_' & [Profit Center] as SECKEYOrig,
+	
+	[Company Code] & 
+		'-' & if(isnum(PurgeChar([Sold-To] , '0' )),mid([Sold-To],index([Sold-To],left(PurgeChar([Sold-To] , '0' ),1))),text([Sold-To])) & 
+		'-' & if(isnum(PurgeChar([Profit Center] , '0' )),mid([Profit Center],index([Profit Center],left(PurgeChar([Profit Center] , '0' ),1))),text([Profit Center]))
+	as SECKEY,
+	
+	[Company Code] & '-' & [Sales Account Group] & '-' & if(isnum(PurgeChar([Profit Center] , '0' )),mid([Profit Center],index([Profit Center],left(PurgeChar([Profit Center] , '0' ),1))),text([Profit Center])) as SalesPersonLink,
+	
+	[Company Code] & '-' & [Sales Account Group] & '-' & if(isnum(PurgeChar([Profit Center] , '0' )),mid([Profit Center],index([Profit Center],left(PurgeChar([Profit Center] , '0' ),1))),text([Profit Center])) & '-' &[Fiscal Year] & '-' &[Fiscal Period] as FlexLink,
+
+	if(upper([Account Group Family (LG) Text])= 'AFG' OR  upper([Account Group Family (LG) Text])= 'ALL OTHERS - INDEPENDENT', [Account Group Family (LG) Text],
+		IF([Account Group Family Rank (LG)] = '99999' OR IsNull([Account Group Family Rank (LG)]), 'ALL OTHER', [Account Group Family (LG) Text])) 
+			as [Account Group -  Company Level],
+	
+	
+	if(upper([Account Group Family (LG) Text])= 'AFG' OR  upper([Account Group Family (LG) Text])= 'ALL OTHERS - INDEPENDENT', [Account Group Family (LG) Text],
+			If([Profit Center Division Ranking] = '99999' OR IsNull([Profit Center Division Ranking]), 'ALL OTHER', [Account Group Family (LG) Text]))
+				as [Account Group - Division Level],
+
+	
+	if(upper([Account Group Family (LG) Text])= 'AFG' OR  upper([Account Group Family (LG) Text])= 'ALL OTHERS - INDEPENDENT', [Account Group Family (LG) Text],
+			IF([Profit Center Sub-Division Ranking] = '99999' OR IsNull([Profit Center Sub-Division Ranking]), 'ALL OTHER',[Account Group Family (LG) Text])) 
+				as [Account Group - Profit Center Level],
+				
+	if(upper([Account Group Family (LG) Text])= 'AFG' OR  upper([Account Group Family (LG) Text])= 'ALL OTHERS - INDEPENDENT', [Account Group Family (LG) Text],
+		IF([Profit Center Level 3 Ranking] = '99999' OR IsNull([Profit Center Level 3 Ranking]), 'ALL OTHER',[Account Group Family (LG) Text])) 
+			as [Account Group - Division Level 3],
+	
+	// Combine All Other and All Other Independent for Sales People Tab. 		
+	if(upper([Account Group Family (LG) Text])= 'AFG', [Account Group Family (LG) Text],
+			If(upper([Account Group Family (LG) Text])= 'ALL OTHERS - INDEPENDENT', 'UNBUDGETED ACCOUNTS', [Account Group Family (LG) Text])) 
+				as [Account Group - Sales People Level]
+
+resident GLPCA;
+
+Drop Table GLPCA;
+Rename Table GLPCA_Map_All_Other to GLPCA;
+
+///$tab Sales People 
+
+//Map Sales Account Group from Customer. This is needed to link Sales Person to Budget, Flex and Forecast Data. 
+CustomerMapping:
